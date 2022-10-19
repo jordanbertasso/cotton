@@ -8,6 +8,7 @@ use dashmap::DashMap;
 use indexmap::IndexMap;
 use itertools::Itertools;
 use node_semver::Version;
+use npmrc::Npmrc;
 use once_cell::sync::Lazy;
 use owo_colors::OwoColorize;
 use rustc_hash::{FxHashMap, FxHashSet};
@@ -75,10 +76,16 @@ pub async fn fetch_package(name: &str) -> Result<RegistryResponse> {
     static S: Lazy<Semaphore> = Lazy::new(|| Semaphore::new(CLIENT_LIMIT));
     let _permit = S.acquire().await.unwrap();
 
+    static CACHED_NPMRC: Lazy<Npmrc> = Lazy::new(|| npmrc::read().unwrap());
+
+    let registry_url = CACHED_NPMRC
+        .get_registry_for_package(name)
+        .unwrap_or("https://registry.npmjs.org/");
+
     retry(|| async {
         decode_json(
             &CLIENT_Z
-                .get(format!("https://registry.npmjs.org/{}", name))
+                .get(format!("{}/{}", registry_url, name))
                 .send()
                 .await?
                 .error_for_status()?
